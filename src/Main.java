@@ -20,23 +20,28 @@ public class Main {
         setInstances();
         leerCSV();
         guardarArff();
-        //2017-08-25 13:43:58.0///2017-08-25 14:36:51.0
-//        System.out.println(calculadorFechas.diferenciaDeDias_Horas("2017-08-25 13:43:58.0", "2017-08-25 14:36:51.0"));
     }
 
     // Esta funcion se encarga de crear
     public static void setInstances(){
+
         // Creo la lista de atributos
         List<Attribute> atts = new ArrayList<Attribute>();
 
+        /*Atributos no utilizados y reemplazados por el momento de aprobacion de
+            pago exacto
+
         // Fecha de crompra del producto
-//        atts.add(new Attribute("SHP_DATE_CREATED_ID"));
+        atts.add(new Attribute("SHP_DATE_CREATED_ID"));
         // Fecha y hora de compra del producto
-//        atts.add(new Attribute("SHP_DATETIME_CREATED_ID"));
+        atts.add(new Attribute("SHP_DATETIME_CREATED_ID"));
         // Fecha de aprobacion de pago
-//        atts.add(new Attribute("SHP_DATE_HANDLING_ID"));
+        atts.add(new Attribute("SHP_DATE_HANDLING_ID"));
         // Fecha y hora de aprobacion de pago
-//        atts.add(new Attribute("SHP_DATETIME_HANDLING_ID"));
+
+        atts.add(new Attribute("SHP_DATETIME_HANDLING_ID"));
+        */
+
         //Hora del dia
         atts.add(new Attribute("SHP_HOUR_HANDLING_ID"));
         //Dia de la semana
@@ -66,21 +71,13 @@ public class Main {
         // MIX otras y fecha hora
         atts.add(new Attribute("SHP_MIX_HT_DATETIME"));
 
-
         instances = new Instances("demora",(ArrayList<Attribute>) atts,1);
     }
 
     public static void leerCSV(){
-
         //Tiene una longitud de 137837152 lineas de datos
         try {
-//            BufferedReader bufferedReader = new BufferedReader(new FileReader("data_handling.csv"));
             CSVReader csvReader = new CSVReader(new FileReader("data_handling.csv"));
-
-            // Para testear voy a dividir el archivo en tres
-            // 60% learning     20% cv      20% testing
-            // Tamano = 670858 lineas
-            // 670858 * 0.6 =
             String linea[];
 
             //No hay de id de primera columna repetidos
@@ -92,13 +89,6 @@ public class Main {
                 instanciarAtributos(linea);
                 i++;
             }
-
-/*
-            while (((linea = csvReader.readNext())!= null) && i<3050){
-                instanciarAtributos(linea);
-                i++;
-            }
-*/
         }catch (IOException e) {
             e.printStackTrace();
         }
@@ -107,22 +97,19 @@ public class Main {
     public static void instanciarAtributos(String linea[]){
         double [] vals = new double[instances.numAttributes()];
 
-//        if (Double.valueOf(linea[13]) != calculadorFechas.diferenciaDeDias_Horas(linea[4],linea[11]))
-//        if (Double.valueOf(linea[13])<0)
-//            System.out.println("id+ " +linea[0] +"HT: "+linea[13] +"// Por mi: " + calculadorFechas.diferenciaDeDias_Horas(linea[4],linea[11]));
-
         double est = Double.valueOf(calculadorFechas.diferenciaDeDias_Horas(linea[4],linea[11]));
         vals[12] = est;
-//        if (Double.valueOf(linea[13]) != est) {
-//            System.out.println(linea[4] + "///" + linea[11] +"\n");
-//            System.out.println("HT " +Double.valueOf(linea[13]) +"/// Est: " +Double.valueOf(calculadorFechas.diferenciaDeDias_Horas(linea[4],linea[11])));
-//        }
+
+        // Delimito aquellos valores extremos
         if (est<145 && Double.parseDouble(linea[7])<7000) {
             preProcesamiento(linea);
-//        vals[0] = 0; //Fecha de compra
-//        vals[1] = 0; //Fecha y  hora de compra
-//        vals[2] = Double.valueOf(linea[1]); //Fecha de aprobacion
-//        vals[3] = Double.valueOf(linea[2]); //Fecha y hora de aprobacion
+
+/* Valores no utilizados y reemplazados por otros
+        vals[0] = 0; //Fecha de compra
+        vals[1] = 0; //Fecha y  hora de compra
+        vals[2] = Double.valueOf(linea[1]); //Fecha de aprobacion
+        vals[3] = Double.valueOf(linea[2]); //Fecha y hora de aprobacion
+ */
             vals[0] = Double.valueOf(linea[1]); //Hora de aprobacion
             vals[1] = Double.valueOf(linea[2]); //Dia de la Semana
             vals[2] = Double.valueOf(linea[3]); //Dia del mes
@@ -172,14 +159,9 @@ public class Main {
 
 
             // Fecha que deja el paquete en el correo
-            String fecha_correo = String.valueOf(diferenciaDeDias(fechaInicial, linea[10]));
+            String fecha_correo = String.valueOf(calculadorFechas.diferenciaDeDias_noHabiles(fechaInicial, linea[10]));
             // Fecha y hora en el que deja el paquete en el correo
-            String fecha_horaCorreo = String.valueOf(diferenciaDeDias_Horas(fecha_horaInicial, linea[11]));
-
-            linea[1] = "0";
-            linea[2] = "0";
-            linea[3] = "0";
-            linea[4] = "0";
+            String fecha_horaCorreo = String.valueOf(calculadorFechas.diferenciaDeDias_Horas_noHabiles(fecha_horaInicial, linea[11]));
 
             linea[1] = hora_aprobacion;
             linea[2] = dia_sem_aprobacion;
@@ -191,39 +173,6 @@ public class Main {
         } catch (ParseException e) {
             e.printStackTrace();
         }
-    }
-
-    //Diferencia de dias entre dos fechas
-    public static long diferenciaDeDias(String str_fechaInicial, String str_fechaFinal){
-
-        //Fecha y hora ej: 2017-07-03
-        SimpleDateFormat formatoFecha = new SimpleDateFormat("yyyy-MM-dd");
-        try {
-            Date date1 = formatoFecha.parse(str_fechaInicial);
-            Date date2 = formatoFecha.parse(str_fechaFinal);
-            long diff = date2.getTime() - date1.getTime();
-            return TimeUnit.DAYS.convert(diff, TimeUnit.MILLISECONDS);
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-        return -1;
-    }
-
-
-    //Diferencia de dias entre dos fechas con horas.
-    public static long diferenciaDeDias_Horas(String str_fechaInicial, String str_fechaFinal){
-
-        //Fecha y hora ej: 2017-07-03 11:08:26.0
-        SimpleDateFormat formatoFecha = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.S");
-        try {
-            Date date1 = formatoFecha.parse(str_fechaInicial);
-            Date date2 = formatoFecha.parse(str_fechaFinal);
-            long diff = date2.getTime() - date1.getTime();
-            return TimeUnit.DAYS.convert(diff, TimeUnit.MILLISECONDS);
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-        return -1;
     }
 
     public static void guardarArff(){
