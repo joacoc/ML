@@ -6,24 +6,27 @@ import weka.filters.unsupervised.attribute.RemoveType;
 import weka.filters.unsupervised.attribute.StringToNominal;
 import weka.filters.unsupervised.instance.RemoveWithValues;
 
+import javax.management.InstanceAlreadyExistsException;
+
 /**
  * Created by Joaking on 11/26/2017.
  */
 public class Procesador {
     public Procesador(){
+    }
 
+    private Instances removerAtributos(Instances instances, int desde, int hasta){
+        for (int i = hasta; i>=desde; i--)
+            instances.deleteAttributeAt(i);
+        return instances;
     }
 
     public Instances procesarUsuario(Instances instances){
-        //Elimino atributos que no necesito
-        for (int i = 30; i>=23; i--)
-            instances.deleteAttributeAt(i);
+        //Elimino atributos que no necesi   to
+        instances = removerAtributos(instances,23,30);
+        instances = removerAtributos(instances,14,20);
+        instances = removerAtributos(instances,0,8);
 
-        for (int i = 20; i>=14; i--)
-            instances.deleteAttributeAt(i);
-
-        for (int i = 8; i>=0; i--)
-            instances.deleteAttributeAt(i);
 
         try {
             StringToNominal stringToNominalFilter = new StringToNominal();
@@ -31,31 +34,117 @@ public class Procesador {
             stringToNominalFilter.setInputFormat(instances);
             instances = Filter.useFilter(instances,stringToNominalFilter);
 
+            NumericToNominal numericToNominal = new NumericToNominal();
+            numericToNominal.setAttributeIndices("1-4,7");
+            numericToNominal.setInputFormat(instances);
+            instances = Filter.useFilter(instances,numericToNominal);
+
+            //Remuevo los extremos
+            if (instances.numInstances()>4) {
+                InterquartileRange interquartileRange = new InterquartileRange();
+                interquartileRange.setAttributeIndices("8-8");
+                interquartileRange.setExtremeValuesAsOutliers(true);
+                interquartileRange.setInputFormat(instances);
+                instances = Filter.useFilter(instances, interquartileRange);
+
+                RemoveWithValues removeWithValues = new RemoveWithValues();
+                removeWithValues.setAttributeIndex("9");
+                removeWithValues.setNominalIndices("2");
+                removeWithValues.setInputFormat(instances);
+                instances = Filter.useFilter(instances, removeWithValues);
+
+                //Remuevo las columnas creadas por el atributo anterior
+                instances.deleteAttributeAt(9);
+                instances.deleteAttributeAt(8);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return instances;
+    }
+
+
+    public Instances procesarCategoria(Instances instances){
+
+        //Elimino atributos que no necesito
+        instances = removerAtributos(instances,14,30);
+        instances = removerAtributos(instances,0,8);
+
+        try {
+            StringToNominal stringToNominalFilter = new StringToNominal();
+            stringToNominalFilter.setAttributeRange("5,6");
+            stringToNominalFilter.setInputFormat(instances);
+            instances = Filter.useFilter(instances, stringToNominalFilter);
+
+            NumericToNominal numericToNominal = new NumericToNominal();
+            numericToNominal.setAttributeIndices("1-4,7");
+            numericToNominal.setInputFormat(instances);
+            instances = Filter.useFilter(instances, numericToNominal);
+
             //Remuevo los extremos
             InterquartileRange interquartileRange = new InterquartileRange();
             interquartileRange.setAttributeIndices("8-8");
             interquartileRange.setExtremeValuesAsOutliers(true);
             interquartileRange.setInputFormat(instances);
-            instances = Filter.useFilter(instances,interquartileRange);
+            instances = Filter.useFilter(instances, interquartileRange);
 
             RemoveWithValues removeWithValues = new RemoveWithValues();
             removeWithValues.setAttributeIndex("9");
             removeWithValues.setNominalIndices("2");
             removeWithValues.setInputFormat(instances);
-            instances = Filter.useFilter(instances,removeWithValues);
+            instances = Filter.useFilter(instances, removeWithValues);
 
             //Remuevo las columnas creadas por el atributo anterior
             instances.deleteAttributeAt(9);
             instances.deleteAttributeAt(8);
+        } catch (Exception e) {
+        e.printStackTrace();
+        }
+
+        return instances;
+    }
+
+    public Instances procesarCodigoZip(Instances instances){
+        //Elimino atributos que no necesito
+        instances = removerAtributos(instances,22,30);
+        instances.deleteAttributeAt(20);
+        instances = removerAtributos(instances,14,18);
+        instances = removerAtributos(instances,0,8);
+
+        try {
+            StringToNominal stringToNominalFilter = new StringToNominal();
+            stringToNominalFilter.setAttributeRange("5,6,7");
+            stringToNominalFilter.setInputFormat(instances);
+            instances = Filter.useFilter(instances, stringToNominalFilter);
 
             NumericToNominal numericToNominal = new NumericToNominal();
             numericToNominal.setAttributeIndices("1-4");
             numericToNominal.setInputFormat(instances);
-            instances = Filter.useFilter(instances,numericToNominal);
+            instances = Filter.useFilter(instances, numericToNominal);
 
+            //Remuevo los extremos
+            if (instances.numInstances()>4) {
+                InterquartileRange interquartileRange = new InterquartileRange();
+                interquartileRange.setAttributeIndices("8");
+                interquartileRange.setExtremeValuesAsOutliers(true);
+                interquartileRange.setInputFormat(instances);
+                instances = Filter.useFilter(instances, interquartileRange);
+
+                RemoveWithValues removeWithValues = new RemoveWithValues();
+                removeWithValues.setAttributeIndex("9");
+                removeWithValues.setNominalIndices("2");
+                removeWithValues.setInputFormat(instances);
+                instances = Filter.useFilter(instances, removeWithValues);
+
+                //Remuevo las columnas creadas por el atributo anterior
+                instances.deleteAttributeAt(9);
+                instances.deleteAttributeAt(8);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
+
         return instances;
+
     }
 }

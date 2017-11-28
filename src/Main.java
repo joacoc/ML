@@ -1,9 +1,15 @@
 import com.opencsv.CSVReader;
 import org.apache.commons.compress.archivers.ar.ArArchiveEntry;
+import weka.classifiers.Classifier;
+import weka.classifiers.evaluation.Evaluation;
+import weka.classifiers.lazy.IBk;
+import weka.classifiers.lazy.KStar;
 import weka.core.Attribute;
 import weka.core.DenseInstance;
 import weka.core.Instance;
 import weka.core.Instances;
+import weka.core.matrix.LinearRegression;
+import weka.filters.unsupervised.instance.RemoveRange;
 
 import java.io.*;
 import java.text.ParseException;
@@ -13,10 +19,13 @@ import java.util.concurrent.TimeUnit;
 
 public class Main {
 
+    static List<Attribute> atts;
     static Instances instances;
     static CalculadorFechas calculadorFechas = new CalculadorFechas();
-    static HashMap<String,ArrayList<String[]>> users_lineas = new HashMap<>();
+    static HashMap<String,ArrayList<String[]>> hash_lineas = new HashMap<>();
     static Procesador procesador = new Procesador();
+    static double total_correlation = 0;
+    static double cant_inst_proc = 0;
 
     public static void main(String[] args) {
         // Seteo las instancias
@@ -29,7 +38,7 @@ public class Main {
     public static void setInstances(){
 
         // Creo la lista de atributos
-        List<Attribute> atts = new ArrayList<Attribute>();
+        atts = new ArrayList<>();
 
         // Fecha de crompra del producto
         atts.add(new Attribute("SHP_DATE_CREATED_ID",true));
@@ -118,40 +127,141 @@ public class Main {
             //No hay de id de primera columna repetidos
             //La primer linea la salteo.
             csvReader.readNext();
-            ArrayList<String[]> al;
-            while (((linea = csvReader.readNext()) != null)) {
-                if (users_lineas.containsKey(linea[6])){
-                    al = users_lineas.get(linea[6]);
-                    al.add(linea);
-                    users_lineas.put(linea[6],al);
-                }else{
-                    al = new ArrayList<>();
-                    al.add(linea);
-                    users_lineas.put(linea[6],al);
-                }
+
+            while (((linea = csvReader.readNext()) != null))
+                cargarUsers(linea);
+
+            try {
+                procesarUsuarios();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
 
-//            for (String key : users_lineas.keySet()) {
-                for (String[] arr : users_lineas.get("be5d6e32444e1e5c3db74845d226064e")) {
-                    instanciarAtributos(arr);
-                }
-                instances = procesador.procesarUsuario(instances);
-                guardarArff("be5d6e32444e1e5c3db74845d226064e");
-                instances.delete();
-//            }
         }catch (IOException e) {
             e.printStackTrace();
         }
     }
 
+    public static void procesarZip() throws Exception {
+        for (String key : hash_lineas.keySet()) {
+            for (String[] arr : hash_lineas.get(key)) {
+                instanciarAtributos(arr);
+            }
+            instances = procesador.procesarCodigoZip(instances);
+            if (1<instances.numInstances() && instances.numInstances()<100) {
+                Instances instances_aux = new Instances(instances);
+                instances_aux.clear();
+
+                for (int i = (int) (instances.numInstances()*0.8); i<instances.numInstances(); i++){
+                    instances_aux.add(instances.get(i));
+                    instances.remove(i);
+                }
+
+                instances_aux.setClassIndex(7);
+                instances.setClassIndex(7);
+                System.out.println("Iniciando clasificador...\n");
+                evaluarIbk(instances,instances_aux,1,key);
+//                evaluarLinearRegression(instances,instances_aux);
+            }
+//                guardarArff(".\\modelos\\zip\\"+key+".arff");
+            instances.delete();
+            //Cuando se pasa al procesador se eliminan varias columnas
+            instances = new Instances("demora",(ArrayList<Attribute>) atts,1);
+        }
+        System.out.println("Total K=5: " +(total_correlation/cant_inst_proc));
+    }
+
+    public static void cargarCodigoZip(String[] linea){
+        ArrayList<String[]> al;
+        if (hash_lineas.containsKey(linea[9])){
+            al = hash_lineas.get(linea[9]);
+            al.add(linea);
+            hash_lineas.put(linea[9],al);
+        }else{
+            al = new ArrayList<>();
+            al.add(linea);
+            hash_lineas.put(linea[9],al);
+        }
+    }
+
+    public static void guardarModelo(Classifier cls, String key) throws IOException {
+        // serialize model
+        ObjectOutputStream oos = new ObjectOutputStream(
+                new FileOutputStream(".\\modelos\\definitivos\\zip\\"+key+".model"));
+        oos.writeObject(cls);
+        oos.flush();
+        oos.close();
+    }
+
+    public static void evaluarIbk(Instances instances, Instances instances_aux, int i, String key) throws Exception {
+        System.out.println("Iniciando clasificador...\n");
+        IBk iBk = new IBk();
+        iBk.setKNN(i);
+        iBk.buildClassifier(instances);
+//        guardarModelo(iBk,key);
+        Evaluation eval = new Evaluation(instances);
+        eval.evaluateModel(iBk,instances_aux);
+        total_correlation += eval.correlationCoefficient();
+        cant_inst_proc++;
+    }
+
+    public static void evaluarLinearRegression(Instances instances_aux, Instances instances) throws Exception {
+        System.out.println("Iniciando clasificador...\n");
+        weka.classifiers.functions.LinearRegression linearRegression = new weka.classifiers.functions.LinearRegression();
+        linearRegression.buildClassifier(instances);
+        Evaluation eval = new Evaluation(instances);
+        eval.evaluateModel(linearRegression,instances_aux);
+        total_correlation += eval.correlationCoefficient();
+        cant_inst_proc++;
+    }
+
+    public static void procesarUsuarios() throws Exception {
+
+        for (String key : hash_lineas.keySet()) {
+            for (String[] arr : hash_lineas.get(key)) {
+                instanciarAtributos(arr);
+            }
+            instances = procesador.procesarUsuario(instances);
+            if (100 > instances.numInstances() && 1 < instances.numInstances()) {
+                Instances instances_aux = new Instances(instances);
+                instances_aux.clear();
+                for (int i = (int) (instances.numInstances()*0.8); i<instances.numInstances(); i++){
+                    instances_aux.add(instances.get(i));
+                    instances.remove(i);
+                }
+
+                instances_aux.setClassIndex(instances_aux.numAttributes()-1);
+                instances.setClassIndex(instances.numAttributes()-1);
+                evaluarIbk(instances,instances_aux, 1,key);
+//                evaluarLinearRegression(instances,instances_aux);
+            }
+//                guardarArff(".\\modelos\\usuarios\\" + key + ".arff");
+            instances.delete();
+
+            //Cuando paso por el procesador se eliminaron varias columnas
+            instances = new Instances("demora", (ArrayList<Attribute>) atts, 1);
+            }
+            System.out.println("Total: " + (total_correlation / cant_inst_proc));
+    }
+
+    public static void cargarUsers(String[] linea){
+        ArrayList<String[]> al;
+        if (hash_lineas.containsKey(linea[6])){
+            al = hash_lineas.get(linea[6]);
+            al.add(linea);
+            hash_lineas.put(linea[6],al);
+        }else{
+            al = new ArrayList<>();
+            al.add(linea);
+            hash_lineas.put(linea[6],al);
+        }
+    }
+
+
     public static void instanciarAtributos(String linea[]){
         double [] vals = new double[instances.numAttributes()];
+
         ArrayList<String> preproceso;
-
-        //est = HT corregido
-        double est = Double.valueOf(calculadorFechas.diferenciaDeDias_Horas(linea[4],linea[11]));
-        vals[31] = est;
-
         preproceso = preProcesamiento(linea);
 
         // Valores no utilizados y reemplazados por otros
@@ -189,8 +299,11 @@ public class Main {
         vals[27] = Double.valueOf(preproceso.get(18));                              //Dia de la semana de aprobacion
         vals[28] = Double.valueOf(preproceso.get(19));                              //Hora de aprobacion
         vals[29] = instances.attribute(29).addStringValue(preproceso.get(20)); //Discretizacion hora aprobacion
+        vals[30] = instances.attribute(30).addStringValue(linea[12]);           //Picking type
 
-        vals[30] = instances.attribute(30).addStringValue(linea[12]); //Picking type
+        //est = HT corregido
+        double est = Double.valueOf(calculadorFechas.diferenciaDeDias_Horas(linea[4],linea[11]));
+        vals[31] = est;
 
         Instance i = new DenseInstance(1.0, vals);
         instances.add(i);
@@ -275,10 +388,10 @@ public class Main {
         return resultado;
     }
 
-    public static void guardarArff(String key){
+    public static void guardarArff(String direccion){
         BufferedWriter writer = null;
         try {
-            writer = new BufferedWriter(new FileWriter("testingbe5d6e32444e1e5c3db74845d226064e.arff"));
+            writer = new BufferedWriter(new FileWriter(direccion));
             writer.write(instances.toString());
             writer.flush();
             writer.close();
