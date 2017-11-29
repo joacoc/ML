@@ -108,12 +108,13 @@ public class Procesador {
         //Elimino atributos que no necesito
         instances = removerAtributos(instances,22,30);
         instances.deleteAttributeAt(20);
+        instances.deleteAttributeAt(19);
         instances = removerAtributos(instances,14,18);
         instances = removerAtributos(instances,0,8);
 
         try {
             StringToNominal stringToNominalFilter = new StringToNominal();
-            stringToNominalFilter.setAttributeRange("5,6,7");
+            stringToNominalFilter.setAttributeRange("5,6");
             stringToNominalFilter.setInputFormat(instances);
             instances = Filter.useFilter(instances, stringToNominalFilter);
 
@@ -125,20 +126,20 @@ public class Procesador {
             //Remuevo los extremos
             if (instances.numInstances()>4) {
                 InterquartileRange interquartileRange = new InterquartileRange();
-                interquartileRange.setAttributeIndices("8");
+                interquartileRange.setAttributeIndices("6");
                 interquartileRange.setExtremeValuesAsOutliers(true);
                 interquartileRange.setInputFormat(instances);
                 instances = Filter.useFilter(instances, interquartileRange);
 
                 RemoveWithValues removeWithValues = new RemoveWithValues();
-                removeWithValues.setAttributeIndex("9");
+                removeWithValues.setAttributeIndex("7");
                 removeWithValues.setNominalIndices("2");
                 removeWithValues.setInputFormat(instances);
                 instances = Filter.useFilter(instances, removeWithValues);
 
                 //Remuevo las columnas creadas por el atributo anterior
-                instances.deleteAttributeAt(9);
                 instances.deleteAttributeAt(8);
+                instances.deleteAttributeAt(7);
             }
         } catch (Exception e) {
             e.printStackTrace();

@@ -1,29 +1,21 @@
 import com.opencsv.CSVReader;
-import org.apache.commons.compress.archivers.ar.ArArchiveEntry;
 import weka.classifiers.Classifier;
 import weka.classifiers.evaluation.Evaluation;
 import weka.classifiers.lazy.IBk;
-import weka.classifiers.lazy.KStar;
-import weka.core.Attribute;
-import weka.core.DenseInstance;
-import weka.core.Instance;
-import weka.core.Instances;
-import weka.core.matrix.LinearRegression;
-import weka.filters.unsupervised.instance.RemoveRange;
+import weka.core.*;
 
 import java.io.*;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
+import java.text.DecimalFormat;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 public class Main {
 
     static List<Attribute> atts;
     static Instances instances;
     static CalculadorFechas calculadorFechas = new CalculadorFechas();
-    static HashMap<String,ArrayList<String[]>> hash_lineas = new HashMap<>();
+    static HashMap<String, ArrayList<String[]>> hash_lineas = new HashMap<>();
     static Procesador procesador = new Procesador();
+    static PreProcesador preProcesador = new PreProcesador();
     static double total_correlation = 0;
     static double cant_inst_proc = 0;
 
@@ -31,10 +23,18 @@ public class Main {
         // Seteo las instancias
         setInstances();
         leerCSV();
-//        guardarArff();
+//        try {
+//            testing();
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
     }
 
-    // Esta funcion se encarga de crear
+    public static void testing() throws Exception {
+        IBk iBk = (IBk) SerializationHelper.read(new FileInputStream("model.weka"));
+    }
+
+    // Esta funcion se encarga de crear la estructura de las instancias
     public static void setInstances(){
 
         // Creo la lista de atributos
@@ -118,6 +118,7 @@ public class Main {
         instances = new Instances("demora",(ArrayList<Attribute>) atts,1);
     }
 
+    //Levanta un CSV y almacena cada linea en un hashmap para su posterior procesamiento.
     public static void leerCSV(){
         //Tiene una longitud de 137837152 lineas de datos
         try {
@@ -129,10 +130,11 @@ public class Main {
             csvReader.readNext();
 
             while (((linea = csvReader.readNext()) != null))
-                cargarUsers(linea);
-
+//                cargarUsers(linea);
+                cargarCodigoZip();
             try {
-                procesarUsuarios();
+//                procesarUsuarios();
+                procesarZip();
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -142,37 +144,46 @@ public class Main {
         }
     }
 
+    //Se encarga de procesar cada una de las direcciones zip
     public static void procesarZip() throws Exception {
+
+        int instancias_totales = 0;
         for (String key : hash_lineas.keySet()) {
             for (String[] arr : hash_lineas.get(key)) {
                 instanciarAtributos(arr);
             }
             instances = procesador.procesarCodigoZip(instances);
-            if (1<instances.numInstances() && instances.numInstances()<100) {
-                Instances instances_aux = new Instances(instances);
-                instances_aux.clear();
 
-                for (int i = (int) (instances.numInstances()*0.8); i<instances.numInstances(); i++){
-                    instances_aux.add(instances.get(i));
-                    instances.remove(i);
-                }
+            // Almaceno en instances_aux el set de testeo
+            Instances instances_aux = new Instances(instances);
+            instances_aux.clear();
+            int num_instancias = instances.numInstances()-1;
 
-                instances_aux.setClassIndex(7);
-                instances.setClassIndex(7);
-                System.out.println("Iniciando clasificador...\n");
-                evaluarIbk(instances,instances_aux,1,key);
-//                evaluarLinearRegression(instances,instances_aux);
+            for (int i = num_instancias; i > (int) (num_instancias*0.8); i--){
+                instances_aux.add(instances.get(i));
+                instances.remove(i);
             }
-//                guardarArff(".\\modelos\\zip\\"+key+".arff");
+            instancias_totales += instances.numInstances();
+            instances_aux.setClassIndex(6);
+            instances.setClassIndex(6);
+            evaluarIbk(instances,instances_aux,1,key);
+
+            //Guardo los datos utilizados en los modelos y los correspondientes data set de testing
+            guardarArff(".\\modelos\\zip\\"+key+".arff");
+            instances = instances_aux;
+            guardarArff(".\\modelos\\zip\\test"+key+".arff");
             instances.delete();
-            //Cuando se pasa al procesador se eliminan varias columnas
+
+            //Cuando se pasan las instancias por el procesador se eliminan varias columnas
             instances = new Instances("demora",(ArrayList<Attribute>) atts,1);
         }
-        System.out.println("Total K=5: " +(total_correlation/cant_inst_proc));
+        System.out.println("Instancias totales: " +instancias_totales);
     }
 
+    //Carga los datos de un codigo zip para su posterior procesamiento
     public static void cargarCodigoZip(String[] linea){
         ArrayList<String[]> al;
+        //La key es el codigo zip
         if (hash_lineas.containsKey(linea[9])){
             al = hash_lineas.get(linea[9]);
             al.add(linea);
@@ -184,68 +195,46 @@ public class Main {
         }
     }
 
-    public static void guardarModelo(Classifier cls, String key) throws IOException {
-        // serialize model
-        ObjectOutputStream oos = new ObjectOutputStream(
-                new FileOutputStream(".\\modelos\\definitivos\\zip\\"+key+".model"));
-        oos.writeObject(cls);
-        oos.flush();
-        oos.close();
-    }
 
-    public static void evaluarIbk(Instances instances, Instances instances_aux, int i, String key) throws Exception {
-        System.out.println("Iniciando clasificador...\n");
-        IBk iBk = new IBk();
-        iBk.setKNN(i);
-        iBk.buildClassifier(instances);
-//        guardarModelo(iBk,key);
-        Evaluation eval = new Evaluation(instances);
-        eval.evaluateModel(iBk,instances_aux);
-        total_correlation += eval.correlationCoefficient();
-        cant_inst_proc++;
-    }
-
-    public static void evaluarLinearRegression(Instances instances_aux, Instances instances) throws Exception {
-        System.out.println("Iniciando clasificador...\n");
-        weka.classifiers.functions.LinearRegression linearRegression = new weka.classifiers.functions.LinearRegression();
-        linearRegression.buildClassifier(instances);
-        Evaluation eval = new Evaluation(instances);
-        eval.evaluateModel(linearRegression,instances_aux);
-        total_correlation += eval.correlationCoefficient();
-        cant_inst_proc++;
-    }
-
+    //Procesa y almacena los datos para construir los modelos de los usuarios
     public static void procesarUsuarios() throws Exception {
-
+        System.out.println("Iniciando procesamiento");
         for (String key : hash_lineas.keySet()) {
             for (String[] arr : hash_lineas.get(key)) {
                 instanciarAtributos(arr);
             }
             instances = procesador.procesarUsuario(instances);
-            if (100 > instances.numInstances() && 1 < instances.numInstances()) {
-                Instances instances_aux = new Instances(instances);
-                instances_aux.clear();
-                for (int i = (int) (instances.numInstances()*0.8); i<instances.numInstances(); i++){
-                    instances_aux.add(instances.get(i));
-                    instances.remove(i);
-                }
 
-                instances_aux.setClassIndex(instances_aux.numAttributes()-1);
-                instances.setClassIndex(instances.numAttributes()-1);
-                evaluarIbk(instances,instances_aux, 1,key);
-//                evaluarLinearRegression(instances,instances_aux);
+            // Almaceno en instances_aux el set de testeo
+            Instances instances_aux = new Instances(instances);
+            instances_aux.clear();
+            int num_instancias = instances.numInstances()-1;
+
+            for (int i = num_instancias; i> (int) (num_instancias*0.8); i--){
+                instances_aux.add(instances.get(i));
+                instances.remove(i);
             }
-//                guardarArff(".\\modelos\\usuarios\\" + key + ".arff");
+
+            //Seteo el HT como la clase.
+            instances_aux.setClassIndex(instances_aux.numAttributes()-1);
+            instances.setClassIndex(instances.numAttributes()-1);
+            evaluarIbk(instances,instances_aux, 1,key);
+
+            //Guardo los datos de los modelos y los set de testeo.
+            guardarArff(".\\modelos\\usuarios\\" + key + ".arff");
+            instances = instances_aux;
+            guardarArff(".\\modelos\\usuarios\\test"+key+".arff");
             instances.delete();
 
             //Cuando paso por el procesador se eliminaron varias columnas
             instances = new Instances("demora", (ArrayList<Attribute>) atts, 1);
             }
-            System.out.println("Total: " + (total_correlation / cant_inst_proc));
     }
 
+    //Carga los datos de cada instancia de los usuarios
     public static void cargarUsers(String[] linea){
         ArrayList<String[]> al;
+        //Cada key es el id del usuario
         if (hash_lineas.containsKey(linea[6])){
             al = hash_lineas.get(linea[6]);
             al.add(linea);
@@ -257,12 +246,11 @@ public class Main {
         }
     }
 
-
     public static void instanciarAtributos(String linea[]){
         double [] vals = new double[instances.numAttributes()];
 
         ArrayList<String> preproceso;
-        preproceso = preProcesamiento(linea);
+        preproceso = preProcesador.preProcesamiento(linea);
 
         // Valores no utilizados y reemplazados por otros
         vals[0] = instances.attribute(0).addStringValue(preproceso.get(0));//Fecha de compra
@@ -309,83 +297,28 @@ public class Main {
         instances.add(i);
     }
 
-    public static String discretizacionHoraDia(int hora){
-        if (0<hora && hora<8)
-            return "madrugada";
-        else
-        if (hora<14)
-            return "mediodia";
-        else
-        if (hora<18)
-            return "tarde";
-        else
-            return "noche";
+    //Clasificador Ibk
+    public static void evaluarIbk(Instances instances, Instances instances_aux, int i, String key) throws Exception {
+        IBk iBk = new IBk();
+        iBk.setKNN(i);
+        iBk.buildClassifier(instances);
+
+        //Evaluo que tan efectivo es el modelo
+        Evaluation eval = new Evaluation(instances);
+        eval.evaluateModel(iBk,instances_aux);
+
+        guardarModelo(iBk,key,eval.correlationCoefficient());
+
     }
 
-    public static ArrayList<String> desmenuzarFecha(String fecha){
-        ArrayList<String> resultado = new ArrayList<>();
-        Calendar c = Calendar.getInstance();
-        //Fecha y hora ej: 2017-07-03 11:08:26.0
-        SimpleDateFormat formatoFechaHora = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.S");
-
-        // Desmenuzo la fecha de compra
-        try {
-            c.setTime(formatoFechaHora.parse(fecha));
-            resultado.add(String.valueOf( c.get(Calendar.MONTH) + 1));
-            resultado.add(String.valueOf( c.get(Calendar.DAY_OF_MONTH) ));
-            resultado.add(String.valueOf( c.get(Calendar.DAY_OF_WEEK) ));
-
-            int hora = c.get(Calendar.HOUR_OF_DAY);
-            resultado.add(String.valueOf(hora));
-            resultado.add(discretizacionHoraDia(hora));
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-
-        return resultado;
-    }
-
-    public static ArrayList<String> preProcesamiento(String linea[]){
-
-        ArrayList<String> resultado = new ArrayList<>();
-
-        String fecha_horaInicialCompra = linea[2];
-        String fecha_horaInicialAprobacion = linea[4];
-        String fecha_horaInicialDelivery = linea[11];
-
-        // Fecha de compra
-        resultado.add(linea[1]);
-        // Fecha y hora de compra
-        resultado.add(fecha_horaInicialCompra);
-        // Desmenuzo la fecha de compra
-        resultado.addAll(desmenuzarFecha(fecha_horaInicialCompra));
-
-        //Fecha de aprobacion
-        resultado.add(linea[3]);
-        //Fecha y hora de aprobacion
-        resultado.add(fecha_horaInicialAprobacion);
-        // Desmenuzo la fecha de aprobacion de pago
-        resultado.addAll(desmenuzarFecha(fecha_horaInicialAprobacion));
-
-        //Fecha de delivery
-        resultado.add(linea[10]);
-        //Fecha y hora de delivery
-        resultado.add(fecha_horaInicialDelivery);
-        //Desmenuzo la fecha de delivery
-        resultado.addAll(desmenuzarFecha(fecha_horaInicialDelivery));
-
-        // Diferencia horas habiles entre compra y aprobaccion
-        long dif = calculadorFechas.diferenciaDeDias_Horas(fecha_horaInicialCompra,fecha_horaInicialAprobacion);
-        resultado.add(String.valueOf(dif));
-        // Diferencia dias habiles entre compra y aprobacion
-        resultado.add(String.valueOf(TimeUnit.DAYS.convert(dif, TimeUnit.HOURS)));
-
-        // Diferencia horas habiles entre aprobacion y delivery
-        dif = calculadorFechas.diferenciaDeDias_Horas(fecha_horaInicialAprobacion,fecha_horaInicialDelivery);
-        resultado.add(String.valueOf(dif));
-        // Diferencia dias habiles entre aprobacion y delivery
-        resultado.add(String.valueOf(TimeUnit.DAYS.convert(dif, TimeUnit.HOURS)));
-        return resultado;
+    //Clasificar de regresion lineal.
+    public static void evaluarLinearRegression(Instances instances_aux, Instances instances) throws Exception {
+        weka.classifiers.functions.LinearRegression linearRegression = new weka.classifiers.functions.LinearRegression();
+        linearRegression.buildClassifier(instances);
+        Evaluation eval = new Evaluation(instances);
+        eval.evaluateModel(linearRegression,instances_aux);
+        total_correlation += eval.correlationCoefficient();
+        cant_inst_proc++;
     }
 
     public static void guardarArff(String direccion){
@@ -399,5 +332,20 @@ public class Main {
             e.printStackTrace();
         }
     }
+
+    public static void guardarModelo(Classifier cls, String key,double efectividad) throws IOException {
+
+        DecimalFormat df = new DecimalFormat("#.##");
+        String dx=df.format(efectividad);
+        efectividad=Double.valueOf(dx);
+
+        // serialize model
+        ObjectOutputStream oos = new ObjectOutputStream(
+                new FileOutputStream(".\\modelos\\definitivos\\zip\\"+key+"-"+efectividad"+.model"));
+        oos.writeObject(cls);
+        oos.flush();
+        oos.close();
+    }
+
 
 }
